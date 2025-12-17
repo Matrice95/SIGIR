@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "SIGIR",
+    "slug": "sigir-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#2E7D32"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ci.agritech.sigir",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "SIGIR a besoin de votre position pour géolocaliser vos parcelles de riz.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "SIGIR a besoin de votre position pour géolocaliser vos parcelles de riz.",
+        "NSCameraUsageDescription": "SIGIR a besoin de l'appareil photo pour documenter vos opérations agricoles.",
+        "NSPhotoLibraryUsageDescription": "SIGIR a besoin d'accéder à vos photos pour documenter vos parcelles."
+      }
+    },
+    "android": {
+      "package": "ci.agritech.sigir",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+    },
+    "plugins": [
+      "expo-notifications"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "YOUR_EAS_PROJECT_ID"
+      }
+    }
+  }
+}
