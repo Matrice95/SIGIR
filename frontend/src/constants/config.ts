@@ -193,6 +193,113 @@ export const SOIL_MOISTURE_THRESHOLDS = {
 };
 
 /**
+ * Variétés de riz disponibles
+ */
+export const RICE_VARIETIES = [
+  { 
+    id: 'wita_9',
+    name: 'WITA 9', 
+    cycle: 120,
+    type: 'Standard national',
+    description: 'Variété standard, cycle long'
+  },
+  { 
+    id: 'nerica_1',
+    name: 'NERICA 1', 
+    cycle: 100,
+    type: 'Résilient',
+    description: 'Résistant sécheresse, adapté pluvial'
+  },
+  { 
+    id: 'wita_8',
+    name: 'WITA 8', 
+    cycle: 90,
+    type: '2 cycles possibles',
+    description: 'Cycle court, 2 récoltes/an'
+  },
+  { 
+    id: 'nerica_2',
+    name: 'NERICA 2', 
+    cycle: 90,
+    type: 'Décrue rapide',
+    description: 'Adapté décrue, cycle court'
+  },
+  { 
+    id: 'ir_841',
+    name: 'IR 841', 
+    cycle: 110,
+    type: 'Irrigué',
+    description: 'Pour riz irrigué, haut rendement'
+  },
+];
+
+/**
+ * Types de sols
+ */
+export const SOIL_TYPES = [
+  { 
+    id: 'clay_loam',
+    name: 'Argilo-limoneux',
+    description: 'Défaut Côte d\'Ivoire - Rétention eau optimale'
+  },
+  { 
+    id: 'clay',
+    name: 'Argileux',
+    description: 'Bonne rétention eau, drainage lent'
+  },
+  { 
+    id: 'loam',
+    name: 'Limoneux',
+    description: 'Équilibré, fertilité moyenne'
+  },
+  { 
+    id: 'sandy_loam',
+    name: 'Sablo-limoneux',
+    description: 'Drainage rapide, irrigation fréquente'
+  },
+  { 
+    id: 'sandy',
+    name: 'Sableux',
+    description: 'Drainage très rapide, faible rétention'
+  },
+];
+
+/**
+ * Régimes d'irrigation
+ */
+export const IRRIGATION_REGIMES = [
+  {
+    id: 'rainfed',
+    name: 'Riz pluvial',
+    description: 'Dépend des pluies - Standard Côte d\'Ivoire',
+    icon: '🌧️',
+  },
+  {
+    id: 'irrigated',
+    name: 'Riz irrigué',
+    description: 'Eau maîtrisée - Meilleurs rendements',
+    icon: '💧',
+  },
+  {
+    id: 'lowland',
+    name: 'Riz bas-fond',
+    description: 'Humidité naturelle - Semi-aquatique',
+    icon: '🌊',
+  },
+];
+
+/**
+ * Sources d'eau disponibles
+ */
+export const WATER_SOURCES = [
+  { id: 'well', name: 'Puits / Forage', icon: '⚫' },
+  { id: 'river', name: 'Cours d\'eau', icon: '🌊' },
+  { id: 'network', name: 'Réseau irrigation collectif', icon: '🚰' },
+  { id: 'rainwater', name: 'Eau de pluie uniquement', icon: '🌧️' },
+  { id: 'none', name: 'Aucun accès eau', icon: '❌' },
+];
+
+/**
  * API Endpoints
  */
 export const API_ENDPOINTS = {

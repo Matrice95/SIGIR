@@ -12,9 +12,11 @@ import FieldDetailsScreen from '@/screens/FieldDetailsScreen';
 import OperationDetailsScreen from '@/screens/OperationDetailsScreen';
 import AddOperationScreen from '@/screens/AddOperationScreen';
 import AddFieldScreen from '@/screens/AddFieldScreen';
+import ManageFieldsScreen from '@/screens/ManageFieldsScreen';
 import AlertsScreen from '@/screens/AlertsScreen';
 import WeatherScreen from '@/screens/WeatherScreen';
 import EvapotranspirationScreen from '@/screens/EvapotranspirationScreen';
+import IrrigationDetailScreen from '@/screens/IrrigationDetailScreen';
 
 // Store
 import { useAppSelector } from '@/store/hooks';
@@ -88,6 +90,14 @@ export default function RootNavigator() {
             />
             
             <Stack.Screen
+              name="ManageFields"
+              component={ManageFieldsScreen}
+              options={{
+                title: 'Gérer mes parcelles',
+              }}
+            />
+            
+            <Stack.Screen
               name="Alerts"
               component={AlertsScreen}
               options={{
@@ -108,6 +118,15 @@ export default function RootNavigator() {
               component={EvapotranspirationScreen}
               options={{
                 title: 'Évapotranspiration',
+              }}
+            />
+            
+            <Stack.Screen
+              name="IrrigationDetail"
+              component={IrrigationDetailScreen}
+              options={{
+                title: 'Irrigation Détail',
+                headerShown: false,
               }}
             />
           </>

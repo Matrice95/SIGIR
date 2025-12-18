@@ -26,4 +26,4 @@ class Field(Base):
     
     # Relationships
     owner = relationship("User", back_populates="fields")
-    operations = relationship("Operation", back_populates="field", cascade="all, delete-orphan")
+    # operations = relationship("Operation", back_populates="field", cascade="all, delete-orphan")  # TODO: Create Operation model

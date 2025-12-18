@@ -8,7 +8,7 @@
  */
 
 import axios from 'axios';
-import { GEE_API_KEY } from '@env';
+import { GEE_PROJECT_ID, GEE_SERVICE_ACCOUNT } from '@env';
 
 // Types
 export interface NDVIData {
@@ -36,7 +36,7 @@ class GoogleEarthEngineService {
    * Vérifier si GEE est disponible
    */
   isAvailable(): boolean {
-    return !!GEE_API_KEY;
+    return !!GEE_PROJECT_ID && !!GEE_SERVICE_ACCOUNT;
   }
 
   /**

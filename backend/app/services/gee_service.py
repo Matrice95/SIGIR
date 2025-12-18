@@ -1,95 +1,106 @@
 """
 Google Earth Engine Service
-Récupération des données NDVI Sentinel-2
+NDVI Sentinel-2 pour surveillance de la végétation
+Account: ee-metamatrice95
 """
 
 import ee
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import json
-
-# Configuration
-GEE_SERVICE_ACCOUNT = "ee-metamatrice95@ee-metamatrice95.iam.gserviceaccount.com"
-GEE_PRIVATE_KEY_PATH = "credentials/gee-private-key.json"
+from pathlib import Path
 
 
 class GoogleEarthEngineService:
     def __init__(self):
         self.initialized = False
-        self._initialize()
-    
-    def _initialize(self):
+        self.service_account = 'ee-metamatrice95@appspot.gserviceaccount.com'
+        self.project_id = 'ee-metamatrice95'
+        
+    def initialize(self):
         """Initialiser Google Earth Engine"""
+        if self.initialized:
+            return True
+            
         try:
-            # Authentification avec service account
-            credentials = ee.ServiceAccountCredentials(
-                GEE_SERVICE_ACCOUNT, 
-                GEE_PRIVATE_KEY_PATH
-            )
-            ee.Initialize(credentials)
-            self.initialized = True
-            print("✅ Google Earth Engine initialisé")
+            # Chercher la clé privée
+            key_file = Path(__file__).parent.parent.parent / 'gee-key.json'
+            
+            if key_file.exists():
+                credentials = ee.ServiceAccountCredentials(
+                    self.service_account,
+                    str(key_file)
+                )
+                ee.Initialize(credentials, project=self.project_id)
+                self.initialized = True
+                print("✅ Google Earth Engine initialisé avec succès")
+                return True
+            else:
+                print(f"⚠️ Clé GEE non trouvée: {key_file}")
+                return False
+                
         except Exception as e:
-            print(f"⚠️ GEE non disponible: {e}")
-            self.initialized = False
+            print(f"❌ Erreur initialisation GEE: {e}")
+            return False
     
-    def get_sentinel2_ndvi(
+    def get_ndvi_sentinel2(
         self,
         latitude: float,
         longitude: float,
-        start_date: datetime,
-        end_date: datetime = None,
-        radius_meters: int = 100
+        radius_meters: int = 100,
+        start_date: datetime = None,
+        end_date: datetime = None
     ) -> List[Dict]:
         """
-        Récupérer les données NDVI Sentinel-2
+        Récupérer les données NDVI Sentinel-2 pour une parcelle
         
         Args:
-            latitude: Latitude du point
-            longitude: Longitude du point
-            start_date: Date de début
-            end_date: Date de fin (par défaut: aujourd'hui)
-            radius_meters: Rayon de la zone (défaut: 100m)
+            latitude: Latitude du centre de la parcelle
+            longitude: Longitude du centre de la parcelle
+            radius_meters: Rayon en mètres autour du point
+            start_date: Date de début (défaut: 120 jours avant aujourd'hui)
+            end_date: Date de fin (défaut: aujourd'hui)
         
         Returns:
-            Liste de dictionnaires avec date, NDVI moyen, min, max, cloud coverage
+            Liste de dictionnaires avec date, ndvi_mean, ndvi_min, ndvi_max, cloud_coverage
         """
-        if not self.initialized:
-            return self._get_simulated_ndvi(start_date, end_date or datetime.now())
+        if not self.initialize():
+            return self._get_simulated_ndvi(start_date or datetime.now() - timedelta(days=120))
         
         try:
-            if end_date is None:
-                end_date = datetime.now()
-            
-            # Créer le point géographique
+            # Définir la zone d'intérêt
             point = ee.Geometry.Point([longitude, latitude])
-            region = point.buffer(radius_meters)
+            roi = point.buffer(radius_meters)
             
-            # Charger la collection Sentinel-2 Level-2A (atmosphériquement corrigée)
-            collection = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED') \
-                .filterBounds(region) \
-                .filterDate(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')) \
-                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30))
+            # Dates
+            if not end_date:
+                end_date = datetime.now()
+            if not start_date:
+                start_date = end_date - timedelta(days=120)
+            
+            # Collection Sentinel-2 Surface Reflectance Harmonized
+            s2 = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                  .filterBounds(roi)
+                  .filterDate(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
+                  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30)))
             
             # Fonction pour calculer NDVI
-            def calculate_ndvi(image):
+            def add_ndvi(image):
                 ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
                 return image.addBands(ndvi)
             
-            # Appliquer le calcul NDVI
-            collection_ndvi = collection.map(calculate_ndvi)
+            # Appliquer NDVI à toutes les images
+            s2_ndvi = s2.map(add_ndvi)
             
-            # Extraire les statistiques pour chaque image
-            def extract_stats(image):
+            # Extraire les valeurs
+            def extract_ndvi(image):
                 stats = image.select('NDVI').reduceRegion(
                     reducer=ee.Reducer.mean().combine(
-                        ee.Reducer.min(), '', True
+                        ee.Reducer.minMax(), sharedInputs=True
                     ).combine(
-                        ee.Reducer.max(), '', True
-                    ).combine(
-                        ee.Reducer.stdDev(), '', True
+                        ee.Reducer.stdDev(), sharedInputs=True
                     ),
-                    geometry=region,
+                    geometry=roi,
                     scale=10,
                     maxPixels=1e9
                 )
@@ -106,194 +117,143 @@ class GoogleEarthEngineService:
                     'image_id': image.id()
                 })
             
-            # Extraire les features
-            features = collection_ndvi.map(extract_stats)
-            feature_list = features.getInfo()
+            # Extraire les données
+            features = s2_ndvi.map(extract_ndvi)
+            data = features.getInfo()
             
             # Formater les résultats
             results = []
-            for feature in feature_list['features']:
+            for feature in data['features']:
                 props = feature['properties']
-                if props['ndvi_mean'] is not None:
+                if props.get('ndvi_mean') is not None:
                     results.append({
                         'date': props['date'],
-                        'ndvi_mean': round(float(props['ndvi_mean']), 3),
-                        'ndvi_min': round(float(props['ndvi_min']), 3),
-                        'ndvi_max': round(float(props['ndvi_max']), 3),
-                        'ndvi_std': round(float(props['ndvi_std']), 3),
-                        'cloud_coverage': float(props['cloud_coverage']),
-                        'image_id': props['image_id']
+                        'ndvi_mean': round(props['ndvi_mean'], 3),
+                        'ndvi_min': round(props.get('ndvi_min', 0), 3),
+                        'ndvi_max': round(props.get('ndvi_max', 0), 3),
+                        'ndvi_std': round(props.get('ndvi_std', 0), 3),
+                        'cloud_coverage': round(props.get('cloud_coverage', 0), 1),
+                        'image_id': props.get('image_id', '')
                     })
             
             # Trier par date
             results.sort(key=lambda x: x['date'])
             
-            print(f"✅ Récupéré {len(results)} images NDVI Sentinel-2")
+            print(f"✅ {len(results)} images NDVI récupérées de Sentinel-2")
             return results
-        
+            
         except Exception as e:
-            print(f"❌ Erreur GEE: {e}")
-            return self._get_simulated_ndvi(start_date, end_date or datetime.now())
+            print(f"❌ Erreur récupération NDVI: {e}")
+            return self._get_simulated_ndvi(start_date or datetime.now() - timedelta(days=120))
     
-    def get_sentinel2_image_url(
-        self,
-        latitude: float,
-        longitude: float,
-        date: datetime,
-        bands: List[str] = ['B4', 'B3', 'B2'],
-        min_val: int = 0,
-        max_val: int = 3000
-    ) -> Optional[str]:
+    def analyze_vegetation_health(self, ndvi_data: List[Dict]) -> Dict:
         """
-        Obtenir l'URL d'une image Sentinel-2 pour affichage sur carte
-        
-        Args:
-            latitude: Latitude
-            longitude: Longitude
-            date: Date de l'image
-            bands: Bandes à afficher (défaut: RGB = B4,B3,B2)
-            min_val: Valeur minimale pour normalisation
-            max_val: Valeur maximale pour normalisation
+        Analyser la santé de la végétation basée sur les données NDVI
         
         Returns:
-            URL de l'image ou None
+            Dict avec status, ndvi, trend, recommendations
         """
-        if not self.initialized:
-            return None
-        
-        try:
-            point = ee.Geometry.Point([longitude, latitude])
-            
-            # Trouver l'image la plus proche de la date
-            image = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED') \
-                .filterBounds(point) \
-                .filterDate(
-                    (date - timedelta(days=5)).strftime('%Y-%m-%d'),
-                    (date + timedelta(days=5)).strftime('%Y-%m-%d')
-                ) \
-                .sort('CLOUDY_PIXEL_PERCENTAGE') \
-                .first()
-            
-            # Créer URL de visualisation
-            vis_params = {
-                'bands': bands,
-                'min': min_val,
-                'max': max_val,
+        if not ndvi_data:
+            return {
+                'status': 'critical',
+                'ndvi': 0.0,
+                'trend': 'stable',
+                'recommendations': ['Aucune donnée NDVI disponible']
             }
-            
-            url = image.getThumbURL({
-                'region': point.buffer(1000).bounds().getInfo()['coordinates'],
-                'dimensions': 512,
-                'format': 'png',
-                **vis_params
-            })
-            
-            return url
         
-        except Exception as e:
-            print(f"❌ Erreur création URL: {e}")
-            return None
+        # NDVI moyen récent
+        recent_ndvi = ndvi_data[-1]['ndvi_mean']
+        
+        # Déterminer le statut
+        if recent_ndvi >= 0.7:
+            status = 'excellent'
+        elif recent_ndvi >= 0.5:
+            status = 'good'
+        elif recent_ndvi >= 0.3:
+            status = 'moderate'
+        elif recent_ndvi >= 0.1:
+            status = 'poor'
+        else:
+            status = 'critical'
+        
+        # Calculer la tendance (sur 3 dernières mesures)
+        trend = 'stable'
+        if len(ndvi_data) >= 3:
+            recent_values = [d['ndvi_mean'] for d in ndvi_data[-3:]]
+            slope = (recent_values[-1] - recent_values[0]) / 2
+            if slope > 0.05:
+                trend = 'improving'
+            elif slope < -0.05:
+                trend = 'declining'
+        
+        # Recommandations
+        recommendations = []
+        if status == 'excellent':
+            recommendations.append('✅ Végétation en excellente santé')
+            recommendations.append('Continuer les pratiques actuelles')
+        elif status == 'good':
+            recommendations.append('✅ Végétation en bonne santé')
+            recommendations.append('Maintenir irrigation et fertilisation')
+        elif status == 'moderate':
+            recommendations.append('⚠️ Végétation modérée')
+            recommendations.append('Vérifier irrigation et nutriments')
+        elif status == 'poor':
+            recommendations.append('⚠️ Végétation faible')
+            recommendations.append('Augmenter irrigation')
+            recommendations.append('Appliquer engrais NPK')
+        else:
+            recommendations.append('🚨 Végétation critique')
+            recommendations.append('Intervention urgente requise')
+            recommendations.append('Vérifier maladies et ravageurs')
+        
+        if trend == 'declining':
+            recommendations.append('📉 Tendance à la baisse - Action rapide nécessaire')
+        elif trend == 'improving':
+            recommendations.append('📈 Tendance à la hausse - Bon signe')
+        
+        return {
+            'status': status,
+            'ndvi': round(recent_ndvi, 3),
+            'trend': trend,
+            'recommendations': recommendations
+        }
     
-    def get_ndvi_image_url(
-        self,
-        latitude: float,
-        longitude: float,
-        date: datetime,
-        radius_meters: int = 1000
-    ) -> Optional[str]:
-        """
-        Obtenir l'URL d'une image NDVI colorée
-        
-        Args:
-            latitude: Latitude
-            longitude: Longitude
-            date: Date de l'image
-            radius_meters: Rayon de la zone
-        
-        Returns:
-            URL de l'image NDVI ou None
-        """
-        if not self.initialized:
-            return None
-        
-        try:
-            point = ee.Geometry.Point([longitude, latitude])
-            region = point.buffer(radius_meters)
-            
-            # Récupérer image
-            image = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED') \
-                .filterBounds(region) \
-                .filterDate(
-                    (date - timedelta(days=5)).strftime('%Y-%m-%d'),
-                    (date + timedelta(days=5)).strftime('%Y-%m-%d')
-                ) \
-                .sort('CLOUDY_PIXEL_PERCENTAGE') \
-                .first()
-            
-            # Calculer NDVI
-            ndvi = image.normalizedDifference(['B8', 'B4'])
-            
-            # Palette de couleurs NDVI
-            ndvi_vis = {
-                'min': -0.2,
-                'max': 1.0,
-                'palette': [
-                    '8B4513',  # Brun (sol nu)
-                    'FF8C00',  # Orange (végétation rare)
-                    'FFFF00',  # Jaune (faible)
-                    '90EE90',  # Vert clair (modéré)
-                    '228B22',  # Vert forêt (bon)
-                    '006400'   # Vert foncé (excellent)
-                ]
-            }
-            
-            url = ndvi.getThumbURL({
-                'region': region.bounds().getInfo()['coordinates'],
-                'dimensions': 512,
-                'format': 'png',
-                **ndvi_vis
-            })
-            
-            return url
-        
-        except Exception as e:
-            print(f"❌ Erreur création URL NDVI: {e}")
-            return None
-    
-    def _get_simulated_ndvi(self, start_date: datetime, end_date: datetime) -> List[Dict]:
-        """Données NDVI simulées (fallback)"""
-        results = []
+    def _get_simulated_ndvi(self, start_date: datetime) -> List[Dict]:
+        """Générer des données NDVI simulées (fallback)"""
+        data = []
         current = start_date
-        day_count = 0
+        days_since_start = 0
         
-        while current <= end_date:
-            if day_count % 10 == 0:  # Tous les 10 jours
+        while current <= datetime.now():
+            if days_since_start % 10 == 0:
                 # Courbe de croissance du riz
-                days_since_start = (current - start_date).days
-                
                 if days_since_start < 20:
                     ndvi_mean = 0.2 + (days_since_start / 20) * 0.2
                 elif days_since_start < 60:
                     ndvi_mean = 0.4 + ((days_since_start - 20) / 40) * 0.3
                 elif days_since_start < 90:
                     ndvi_mean = 0.7 + ((days_since_start - 60) / 30) * 0.1
-                else:
+                elif days_since_start < 120:
                     ndvi_mean = 0.8 - ((days_since_start - 90) / 30) * 0.3
+                else:
+                    ndvi_mean = 0.5 - ((days_since_start - 120) / 10) * 0.3
                 
-                results.append({
+                ndvi_mean = max(0.1, min(1.0, ndvi_mean))
+                
+                data.append({
                     'date': current.strftime('%Y-%m-%d'),
                     'ndvi_mean': round(ndvi_mean, 3),
                     'ndvi_min': round(ndvi_mean - 0.05, 3),
                     'ndvi_max': round(ndvi_mean + 0.05, 3),
                     'ndvi_std': 0.05,
                     'cloud_coverage': 10.0,
-                    'image_id': f'SIMULATED_{current.strftime("%Y%m%d")}'
+                    'image_id': f'SIM_{current.strftime("%Y%m%d")}'
                 })
             
             current += timedelta(days=1)
-            day_count += 1
+            days_since_start += 1
         
-        return results
+        return data
 
 
 # Instance globale

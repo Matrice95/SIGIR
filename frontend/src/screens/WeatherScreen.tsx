@@ -1,6 +1,6 @@
 /**
- * Écran Météo Détaillée
- * Affiche les prévisions météorologiques sur 7 jours
+ * Écran Météo avec données réelles
+ * Open-Meteo API + NASA POWER + Penman-Monteith
  */
 
 import React, { useState, useEffect } from 'react';
@@ -10,266 +10,346 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
-  Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRoute, RouteProp } from '@react-navigation/native';
+
+// Services
+import {
+  backendWeatherService,
+  BackendWeatherResponse,
+  BackendRainfallData,
+  BackendTopography,
+  BackendNDVI,
+} from '@/services/weather/backendWeatherService';
+
+// Store & Types
+import { useAppSelector } from '@/store/hooks';
+import { COLORS, TYPOGRAPHY, SPACING, SIZES } from '@/constants/theme';
 
 // Components
 import Card from '@/components/Card';
-import Loading from '@/components/Loading';
 
-// Store & Constants
-import { useAppSelector } from '@/store/hooks';
-import { COLORS, SPACING, TYPOGRAPHY } from '@/constants/theme';
-
-interface WeatherDay {
-  date: Date;
-  temp: { min: number; max: number };
-  humidity: number;
-  precipitation: number;
-  wind: number;
-  condition: string;
-  icon: string;
-}
+type WeatherScreenRouteProp = RouteProp<{ params: { fieldId: string } }, 'params'>;
 
 export default function WeatherScreen() {
-  const { activeFieldId, fields } = useAppSelector(state => state.fields);
-  const activeField = fields.find(f => f.id === activeFieldId) || fields[0];
+  const route = useRoute<WeatherScreenRouteProp>();
+  const fieldId = route.params?.fieldId;
+  
+  const { fields } = useAppSelector(state => state.fields);
+  const field = fields.find(f => f.id === fieldId);
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [selectedDay, setSelectedDay] = useState(0);
+  const [weather, setWeather] = useState<BackendWeatherResponse | null>(null);
+  const [rainfall, setRainfall] = useState<BackendRainfallData[]>([]);
+  const [topography, setTopography] = useState<BackendTopography | null>(null);
+  const [ndvi, setNdvi] = useState<BackendNDVI[]>([]);
+  const [irrigationNeed, setIrrigationNeed] = useState<any>(null);
+  const [recommendations, setRecommendations] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  // Données météo simulées (à remplacer par API réelle)
-  const [forecast, setForecast] = useState<WeatherDay[]>([
-    {
-      date: new Date(),
-      temp: { min: 22, max: 32 },
-      humidity: 75,
-      precipitation: 5,
-      wind: 12,
-      condition: 'Partiellement nuageux',
-      icon: '⛅',
-    },
-    {
-      date: new Date(Date.now() + 86400000),
-      temp: { min: 23, max: 33 },
-      humidity: 70,
-      precipitation: 0,
-      wind: 10,
-      condition: 'Ensoleillé',
-      icon: '☀️',
-    },
-    {
-      date: new Date(Date.now() + 2 * 86400000),
-      temp: { min: 21, max: 30 },
-      humidity: 85,
-      precipitation: 15,
-      wind: 15,
-      condition: 'Pluie légère',
-      icon: '🌧️',
-    },
-    {
-      date: new Date(Date.now() + 3 * 86400000),
-      temp: { min: 22, max: 31 },
-      humidity: 80,
-      precipitation: 10,
-      wind: 13,
-      condition: 'Averses',
-      icon: '🌦️',
-    },
-    {
-      date: new Date(Date.now() + 4 * 86400000),
-      temp: { min: 23, max: 32 },
-      humidity: 72,
-      precipitation: 2,
-      wind: 11,
-      condition: 'Nuageux',
-      icon: '☁️',
-    },
-    {
-      date: new Date(Date.now() + 5 * 86400000),
-      temp: { min: 24, max: 34 },
-      humidity: 68,
-      precipitation: 0,
-      wind: 9,
-      condition: 'Ensoleillé',
-      icon: '☀️',
-    },
-    {
-      date: new Date(Date.now() + 6 * 86400000),
-      temp: { min: 23, max: 33 },
-      humidity: 73,
-      precipitation: 3,
-      wind: 12,
-      condition: 'Partiellement nuageux',
-      icon: '⛅',
-    },
-  ]);
+  const { token } = useAppSelector(state => state.auth);
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    // TODO: Charger données météo depuis API
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setRefreshing(false);
-  };
-
-  const formatDate = (date: Date, format: 'short' | 'long' = 'short') => {
-    if (format === 'short') {
-      const days = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
-      return days[date.getDay()];
+  useEffect(() => {
+    if (field?.location?.latitude && field?.location?.longitude) {
+      loadWeatherData();
     }
-    return date.toLocaleDateString('fr-FR', {
-      weekday: 'long',
-      day: '2-digit',
-      month: 'long',
-    });
+  }, [fieldId]);
+
+  const loadWeatherData = async () => {
+    if (!field) {
+      setError('Parcelle non trouvée');
+      setLoading(false);
+      return;
+    }
+
+    if (!token) {
+      setError('Non authentifié');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setError(null);
+      
+      // Définir le token pour les requêtes backend
+      backendWeatherService.setToken(token);
+
+      // Charger toutes les données depuis le backend
+      const data = await backendWeatherService.getAllFieldData(fieldId);
+
+      // Calculer besoin irrigation
+      const irrigation = backendWeatherService.calculateIrrigationNeed(
+        data.weather,
+        data.rainfall
+      );
+
+      // Générer recommandations
+      const recs = backendWeatherService.generateRecommendations(data);
+
+      setWeather(data.weather);
+      setRainfall(data.rainfall);
+      setTopography(data.topography);
+      setNdvi(data.ndvi);
+      setIrrigationNeed(irrigation);
+      setRecommendations(recs);
+    } catch (err: any) {
+      console.error('Erreur chargement météo:', err);
+      setError(err.message || 'Erreur lors du chargement des données');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
 
-  const selectedWeather = forecast[selectedDay];
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadWeatherData();
+  };
+
+  const getWeatherIcon = (precipitation: number, temp: number): string => {
+    if (precipitation > 10) return 'rainy';
+    if (precipitation > 0) return 'rainy-outline';
+    if (temp > 32) return 'sunny';
+    return 'partly-sunny';
+  };
+
+  if (!field) {
+    return (
+      <View style={styles.errorContainer}>
+        <Ionicons name="alert-circle" size={64} color={COLORS.error} />
+        <Text style={styles.errorText}>Parcelle non trouvée</Text>
+      </View>
+    );
+  }
 
   if (loading) {
-    return <Loading fullScreen message="Chargement des données météo..." />;
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Chargement des données météo...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.errorContainer}>
+        <Ionicons name="alert-circle" size={64} color={COLORS.error} />
+        <Text style={styles.errorText}>{error}</Text>
+      </View>
+    );
   }
 
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          colors={[COLORS.primary]}
-        />
-      }
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
-      {/* Localisation */}
-      {activeField?.location && (
-        <Card style={styles.locationCard}>
-          <View style={styles.locationHeader}>
-            <Ionicons name="location" size={20} color={COLORS.primary} />
-            <Text style={styles.locationText}>{activeField.name}</Text>
-          </View>
-          <Text style={styles.locationDetail}>
-            📍 {activeField.location.latitude.toFixed(4)}, {activeField.location.longitude.toFixed(4)}
+      {/* En-tête parcelle */}
+      <Card style={styles.headerCard}>
+        <Text style={styles.fieldName}>{field.name}</Text>
+        <Text style={styles.fieldLocation}>
+          📍 {field.location?.latitude.toFixed(4)}°, {field.location?.longitude.toFixed(4)}°
+        </Text>
+        {topography && (
+          <Text style={styles.fieldElevation}>
+            🏔️ Altitude: {topography.elevation}m | Pente: {topography.slope}°
           </Text>
-        </Card>
-      )}
-
-      {/* Sélecteur de jours */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.daysScroll}
-        contentContainerStyle={styles.daysContent}
-      >
-        {forecast.map((day, index) => (
-          <Pressable
-            key={index}
-            style={[
-              styles.dayCard,
-              selectedDay === index && styles.dayCardActive,
-            ]}
-            onPress={() => setSelectedDay(index)}
-          >
-            <Text
-              style={[
-                styles.dayName,
-                selectedDay === index && styles.dayNameActive,
-              ]}
-            >
-              {index === 0 ? "Aujourd'hui" : formatDate(day.date)}
-            </Text>
-            <Text style={styles.dayIcon}>{day.icon}</Text>
-            <Text
-              style={[
-                styles.dayTemp,
-                selectedDay === index && styles.dayTempActive,
-              ]}
-            >
-              {day.temp.max}°
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-
-      {/* Météo détaillée du jour sélectionné */}
-      <Card style={styles.detailCard}>
-        <Text style={styles.detailDate}>{formatDate(selectedWeather.date, 'long')}</Text>
-        
-        <View style={styles.mainWeather}>
-          <Text style={styles.mainIcon}>{selectedWeather.icon}</Text>
-          <View style={styles.mainTemp}>
-            <Text style={styles.tempValue}>{selectedWeather.temp.max}°</Text>
-            <Text style={styles.tempLabel}>Max</Text>
-          </View>
-          <View style={styles.mainTemp}>
-            <Text style={styles.tempValue}>{selectedWeather.temp.min}°</Text>
-            <Text style={styles.tempLabel}>Min</Text>
-          </View>
-        </View>
-
-        <Text style={styles.condition}>{selectedWeather.condition}</Text>
-
-        {/* Détails supplémentaires */}
-        <View style={styles.detailsGrid}>
-          <View style={styles.detailItem}>
-            <Ionicons name="water" size={24} color={COLORS.info} />
-            <Text style={styles.detailValue}>{selectedWeather.humidity}%</Text>
-            <Text style={styles.detailLabel}>Humidité</Text>
-          </View>
-
-          <View style={styles.detailItem}>
-            <Ionicons name="rainy" size={24} color={COLORS.info} />
-            <Text style={styles.detailValue}>{selectedWeather.precipitation} mm</Text>
-            <Text style={styles.detailLabel}>Pluie</Text>
-          </View>
-
-          <View style={styles.detailItem}>
-            <Ionicons name="speedometer" size={24} color={COLORS.info} />
-            <Text style={styles.detailValue}>{selectedWeather.wind} km/h</Text>
-            <Text style={styles.detailLabel}>Vent</Text>
-          </View>
-        </View>
-      </Card>
-
-      {/* Recommandations */}
-      <Card>
-        <Text style={styles.sectionTitle}>💡 Recommandations</Text>
-        
-        {selectedWeather.precipitation > 10 ? (
-          <View style={styles.recommendation}>
-            <Ionicons name="alert-circle" size={20} color={COLORS.warning} />
-            <Text style={styles.recommendationText}>
-              Pluie prévue : reportez l'irrigation si possible
-            </Text>
-          </View>
-        ) : selectedWeather.precipitation === 0 && selectedWeather.temp.max > 32 ? (
-          <View style={styles.recommendation}>
-            <Ionicons name="water" size={20} color={COLORS.info} />
-            <Text style={styles.recommendationText}>
-              Temps chaud et sec : irrigation recommandée
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.recommendation}>
-            <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
-            <Text style={styles.recommendationText}>
-              Conditions favorables pour les opérations agricoles
-            </Text>
-          </View>
         )}
       </Card>
 
-      {/* Avertissement */}
-      <Card style={styles.warningCard}>
-        <Ionicons name="information-circle" size={20} color={COLORS.textSecondary} />
-        <Text style={styles.warningText}>
-          Les prévisions météorologiques sont fournies à titre indicatif. 
-          Consultez les services météorologiques locaux pour plus de précision.
+      {/* Météo actuelle */}
+      {weather && (
+        <Card style={styles.currentCard}>
+          <Text style={styles.sectionTitle}>Météo Actuelle</Text>
+          <View style={styles.currentWeather}>
+            <View style={styles.currentTemp}>
+              <Text style={styles.tempValue}>{Math.round(weather.current.temperature)}°</Text>
+              <Text style={styles.tempLabel}>Température</Text>
+            </View>
+            <View style={styles.currentDetails}>
+              <View style={styles.detailRow}>
+                <Ionicons name="water" size={20} color={COLORS.info} />
+                <Text style={styles.detailText}>{weather.current.humidity}% humidité</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Ionicons name="speedometer" size={20} color={COLORS.secondary} />
+                <Text style={styles.detailText}>{Math.round(weather.current.wind_speed)} km/h vent</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Ionicons name="rainy" size={20} color={COLORS.primary} />
+                <Text style={styles.detailText}>{weather.current.precipitation} mm pluie</Text>
+              </View>
+            </View>
+          </View>
+        </Card>
+      )}
+
+      {/* Prévisions 7 jours */}
+      {weather && (
+        <Card style={styles.forecastCard}>
+          <Text style={styles.sectionTitle}>Prévisions 7 Jours</Text>
+          {weather.daily.map((day, index) => (
+            <View key={index} style={styles.forecastDay}>
+              <View style={styles.forecastLeft}>
+                <Ionicons
+                  name={getWeatherIcon(day.precipitation_sum, day.temperature_max)}
+                  size={32}
+                  color={COLORS.primary}
+                />
+                <View style={styles.forecastDate}>
+                  <Text style={styles.forecastDateText}>
+                    {new Date(day.date).toLocaleDateString('fr-FR', { weekday: 'short' })}
+                  </Text>
+                  <Text style={styles.forecastDateSubtext}>
+                    {new Date(day.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.forecastRight}>
+                <Text style={styles.forecastTemp}>
+                  {Math.round(day.temperature_max)}° / {Math.round(day.temperature_min)}°
+                </Text>
+                <Text style={styles.forecastRain}>
+                  💧 {day.precipitation_sum}mm ({day.precipitation_probability_max}%)
+                </Text>
+                <Text style={styles.forecastET0}>
+                  🌱 ET0: {day.et0_fao_evapotranspiration.toFixed(1)}mm
+                </Text>
+              </View>
+            </View>
+          ))}
+        </Card>
+      )}
+
+      {/* Besoin en irrigation */}
+      {irrigationNeed && (
+        <Card style={styles.irrigationCard}>
+          <Text style={styles.sectionTitle}>💧 Besoin en Irrigation (7 jours)</Text>
+          <View style={styles.irrigationStats}>
+            <View style={styles.irrigationStat}>
+              <Text style={styles.statValue}>{irrigationNeed.totalET0}mm</Text>
+              <Text style={styles.statLabel}>Évapotranspiration</Text>
+            </View>
+            <View style={styles.irrigationStat}>
+              <Text style={styles.statValue}>{irrigationNeed.totalRain}mm</Text>
+              <Text style={styles.statLabel}>Pluie prévue</Text>
+            </View>
+            <View style={styles.irrigationStat}>
+              <Text style={[styles.statValue, { color: irrigationNeed.irrigationNeeded > 30 ? COLORS.error : COLORS.success }]}>
+                {irrigationNeed.irrigationNeeded}mm
+              </Text>
+              <Text style={styles.statLabel}>Irrigation nécessaire</Text>
+            </View>
+          </View>
+          {irrigationNeed.nextIrrigationDate && (
+            <View style={styles.irrigationAlert}>
+              <Ionicons name="alert-circle" size={24} color={COLORS.warning} />
+              <Text style={styles.irrigationAlertText}>
+                Irriguer avant le {new Date(irrigationNeed.nextIrrigationDate).toLocaleDateString('fr-FR')}
+              </Text>
+            </View>
+          )}
+        </Card>
+      )}
+
+      {/* Historique pluies */}
+      {rainfall.length > 0 && (
+        <Card style={styles.rainfallCard}>
+          <Text style={styles.sectionTitle}>🌧️ Pluies ({rainfall.length} derniers jours)</Text>
+          <View style={styles.rainfallStats}>
+            <View style={styles.rainfallStat}>
+              <Text style={styles.statValue}>
+                {Math.round(rainfall.reduce((sum, d) => sum + d.precipitation, 0))}mm
+              </Text>
+              <Text style={styles.statLabel}>Total</Text>
+            </View>
+            <View style={styles.rainfallStat}>
+              <Text style={styles.statValue}>
+                {(rainfall.reduce((sum, d) => sum + d.precipitation, 0) / rainfall.length).toFixed(1)}mm
+              </Text>
+              <Text style={styles.statLabel}>Moyenne/jour</Text>
+            </View>
+            <View style={styles.rainfallStat}>
+              <Text style={styles.statValue}>
+                {rainfall.filter(d => d.precipitation > 1).length}
+              </Text>
+              <Text style={styles.statLabel}>Jours pluvieux</Text>
+            </View>
+            <View style={styles.rainfallStat}>
+              <Text style={styles.statValue}>
+                {Math.max(...rainfall.map(d => d.precipitation)).toFixed(1)}mm
+              </Text>
+              <Text style={styles.statLabel}>Max quotidien</Text>
+            </View>
+          </View>
+        </Card>
+      )}
+
+      {/* Recommandations */}
+      {recommendations.length > 0 && (
+        <Card style={styles.recommendationsCard}>
+          <Text style={styles.sectionTitle}>💡 Recommandations</Text>
+          {recommendations.map((rec, index) => (
+            <View key={index} style={styles.recommendation}>
+              <Ionicons 
+                name={rec.includes('🚨') ? 'warning' : rec.includes('⚠️') ? 'alert-circle' : 'checkmark-circle'} 
+                size={20} 
+                color={rec.includes('🚨') ? COLORS.error : rec.includes('⚠️') ? COLORS.warning : COLORS.success} 
+              />
+              <Text style={styles.recommendationText}>{rec}</Text>
+            </View>
+          ))}
+        </Card>
+      )}
+
+      {/* Santé de la végétation (NDVI) */}
+      {ndvi.length > 0 && (
+        <Card style={styles.ndviCard}>
+          <Text style={styles.sectionTitle}>🛰️ Santé Végétation (NDVI)</Text>
+          {(() => {
+            const health = backendWeatherService.analyzeVegetationHealth(ndvi);
+            return (
+              <View>
+                <View style={styles.ndviStatus}>
+                  <Text style={styles.ndviValue}>{health.currentNDVI}</Text>
+                  <Text style={[
+                    styles.ndviLabel,
+                    { color: 
+                      health.status === 'excellent' ? COLORS.success :
+                      health.status === 'good' ? COLORS.info :
+                      health.status === 'moderate' ? COLORS.warning :
+                      COLORS.error
+                    }
+                  ]}>
+                    {health.message}
+                  </Text>
+                </View>
+                <Text style={styles.ndviTrend}>
+                  Tendance: {health.trend === 'improving' ? '📈 En amélioration' : 
+                             health.trend === 'declining' ? '📉 En baisse' : 
+                             '➡️ Stable'}
+                </Text>
+                <Text style={styles.ndviInfo}>
+                  {ndvi.length} mesures depuis plantation
+                </Text>
+              </View>
+            );
+          })()}
+        </Card>
+      )}
+
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>
+          Données: Open-Meteo, NASA POWER, SRTM
         </Text>
-      </Card>
+        <Text style={styles.footerText}>
+          Mis à jour: {new Date().toLocaleString('fr-FR')}
+        </Text>
+      </View>
     </ScrollView>
   );
 }
@@ -279,160 +359,229 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  content: {
-    padding: SPACING.base,
-    paddingBottom: SPACING.xxxl,
-  },
-  locationCard: {
-    marginBottom: SPACING.md,
-  },
-  locationHeader: {
-    flexDirection: 'row',
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: COLORS.background,
+  },
+  loadingText: {
+    marginTop: SPACING.base,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.textSecondary,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+    padding: SPACING.xl,
+  },
+  errorText: {
+    marginTop: SPACING.base,
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    color: COLORS.error,
+    textAlign: 'center',
+  },
+  headerCard: {
+    margin: SPACING.base,
+  },
+  fieldName: {
+    fontSize: TYPOGRAPHY.fontSize.xl,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.text,
     marginBottom: SPACING.xs,
   },
-  locationText: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
-    fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: COLORS.text,
-    marginLeft: SPACING.sm,
-  },
-  locationDetail: {
+  fieldLocation: {
     fontSize: TYPOGRAPHY.fontSize.sm,
     color: COLORS.textSecondary,
   },
-  daysScroll: {
-    marginBottom: SPACING.md,
-  },
-  daysContent: {
-    paddingHorizontal: SPACING.xs,
-    gap: SPACING.sm,
-  },
-  dayCard: {
-    width: 90,
-    padding: SPACING.md,
-    borderRadius: 12,
-    backgroundColor: COLORS.surface,
-    borderWidth: 2,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-  },
-  dayCardActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  dayName: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    fontWeight: TYPOGRAPHY.fontWeight.semibold,
-    color: COLORS.text,
-    marginBottom: SPACING.sm,
-  },
-  dayNameActive: {
-    color: COLORS.textLight,
-  },
-  dayIcon: {
-    fontSize: 32,
-    marginVertical: SPACING.sm,
-  },
-  dayTemp: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
-    fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: COLORS.text,
-  },
-  dayTempActive: {
-    color: COLORS.textLight,
-  },
-  detailCard: {
-    marginBottom: SPACING.md,
-  },
-  detailDate: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
-    fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: COLORS.text,
-    textAlign: 'center',
-    marginBottom: SPACING.lg,
-    textTransform: 'capitalize',
-  },
-  mainWeather: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.md,
-  },
-  mainIcon: {
-    fontSize: 80,
-    marginRight: SPACING.lg,
-  },
-  mainTemp: {
-    alignItems: 'center',
-    marginHorizontal: SPACING.md,
-  },
-  tempValue: {
-    fontSize: TYPOGRAPHY.fontSize.xxxl,
-    fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: COLORS.text,
-  },
-  tempLabel: {
+  fieldElevation: {
     fontSize: TYPOGRAPHY.fontSize.sm,
     color: COLORS.textSecondary,
     marginTop: SPACING.xs,
   },
-  condition: {
-    fontSize: TYPOGRAPHY.fontSize.xl,
-    color: COLORS.text,
-    textAlign: 'center',
-    marginBottom: SPACING.lg,
-  },
-  detailsGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  detailItem: {
-    alignItems: 'center',
-  },
-  detailValue: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
-    fontWeight: TYPOGRAPHY.fontWeight.bold,
-    color: COLORS.text,
-    marginTop: SPACING.sm,
-  },
-  detailLabel: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
+  currentCard: {
+    margin: SPACING.base,
+    marginTop: 0,
   },
   sectionTitle: {
     fontSize: TYPOGRAPHY.fontSize.lg,
     fontWeight: TYPOGRAPHY.fontWeight.bold,
     color: COLORS.text,
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.base,
+  },
+  currentWeather: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  currentTemp: {
+    alignItems: 'center',
+  },
+  tempValue: {
+    fontSize: 64,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.primary,
+  },
+  tempLabel: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.textSecondary,
+  },
+  currentDetails: {
+    justifyContent: 'center',
+    gap: SPACING.sm,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  detailText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.text,
+  },
+  forecastCard: {
+    margin: SPACING.base,
+    marginTop: 0,
+  },
+  forecastDay: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  forecastLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  forecastDate: {},
+  forecastDateText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semibold,
+    color: COLORS.text,
+    textTransform: 'capitalize',
+  },
+  forecastDateSubtext: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.textSecondary,
+  },
+  forecastRight: {
+    alignItems: 'flex-end',
+  },
+  forecastTemp: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semibold,
+    color: COLORS.text,
+  },
+  forecastRain: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.info,
+  },
+  forecastET0: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.success,
+  },
+  irrigationCard: {
+    margin: SPACING.base,
+    marginTop: 0,
+  },
+  irrigationStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: SPACING.base,
+  },
+  irrigationStat: {
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: TYPOGRAPHY.fontSize.xl,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.primary,
+  },
+  statLabel: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
+    textAlign: 'center',
+  },
+  irrigationAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: COLORS.warning + '20',
+    padding: SPACING.sm,
+    borderRadius: SIZES.borderRadius.md,
+  },
+  irrigationAlertText: {
+    flex: 1,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.text,
+  },
+  rainfallCard: {
+    margin: SPACING.base,
+    marginTop: 0,
+  },
+  rainfallStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  rainfallStat: {
+    alignItems: 'center',
+  },
+  recommendationsCard: {
+    margin: SPACING.base,
+    marginTop: 0,
   },
   recommendation: {
     flexDirection: 'row',
-    alignItems: 'center',
-    padding: SPACING.md,
-    backgroundColor: COLORS.background,
-    borderRadius: 8,
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
   },
   recommendationText: {
+    flex: 1,
     fontSize: TYPOGRAPHY.fontSize.base,
     color: COLORS.text,
-    marginLeft: SPACING.md,
-    flex: 1,
   },
-  warningCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: `${COLORS.warning}10`,
+  ndviCard: {
+    margin: SPACING.base,
+    marginTop: 0,
   },
-  warningText: {
+  ndviStatus: {
+    alignItems: 'center',
+    marginBottom: SPACING.base,
+  },
+  ndviValue: {
+    fontSize: TYPOGRAPHY.fontSize['2xl'],
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.primary,
+  },
+  ndviLabel: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semibold,
+    marginTop: SPACING.xs,
+  },
+  ndviTrend: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.text,
+    marginBottom: SPACING.xs,
+    textAlign: 'center',
+  },
+  ndviInfo: {
     fontSize: TYPOGRAPHY.fontSize.sm,
     color: COLORS.textSecondary,
-    marginLeft: SPACING.md,
-    flex: 1,
-    lineHeight: 20,
+    textAlign: 'center',
+  },
+  footer: {
+    alignItems: 'center',
+    padding: SPACING.xl,
+  },
+  footerText: {
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.xs,
   },
 });

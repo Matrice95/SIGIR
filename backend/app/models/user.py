@@ -19,4 +19,4 @@ class User(Base):
     
     # Relationships
     fields = relationship("Field", back_populates="owner", cascade="all, delete-orphan")
-    alerts = relationship("Alert", back_populates="user", cascade="all, delete-orphan")
+    # alerts = relationship("Alert", back_populates="user", cascade="all, delete-orphan")  # TODO: Create Alert model

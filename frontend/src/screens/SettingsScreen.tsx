@@ -83,7 +83,7 @@ export default function SettingsScreen() {
           icon="leaf"
           title="Gérer mes parcelles"
           subtitle="Ajouter, modifier ou supprimer"
-          onPress={() => console.log('Manage fields')}
+          onPress={() => navigation.navigate('ManageFields' as never)}
         />
       </Card>
 

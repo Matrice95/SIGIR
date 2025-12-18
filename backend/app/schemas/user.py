@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional
 
 class UserBase(BaseModel):
-    phone: str = Field(..., pattern=r"^\+225\d{10}$")
+    phone: str
     name: str
 
 class UserCreate(UserBase):

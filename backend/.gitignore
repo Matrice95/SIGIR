@@ -27,6 +27,11 @@ wheels/
 .env
 .env.local
 
+# Google Earth Engine
+gee-service-account.json
+*-service-account.json
+ee-*.json
+
 # IDE
 .vscode/
 .idea/

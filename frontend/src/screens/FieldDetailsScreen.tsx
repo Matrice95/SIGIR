@@ -55,9 +55,45 @@ export default function FieldDetailsScreen() {
     );
   }
 
-  const daysSinceSowing = getDaysSinceSowing(field.sowingDate);
+  // Utiliser planting_date (de l'API) ou sowingDate (local), avec valeur par défaut
+  const plantingDate = (field as any).planting_date || (field as any).sowingDate;
+  
+  if (!plantingDate) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Header title="Détails de la parcelle" onBack={() => navigation.goBack()} />
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>⚠️ Date de semis manquante</Text>
+          <Text style={styles.errorSubtext}>
+            Cette parcelle n'a pas de date de semis enregistrée.
+          </Text>
+          <Button
+            title="Retour"
+            onPress={() => navigation.goBack()}
+            variant="primary"
+            size="medium"
+            style={{ marginTop: 20 }}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const daysSinceSowing = getDaysSinceSowing(plantingDate);
   const cycleProgress = getCycleProgress(daysSinceSowing);
-  const currentStageInfo = PHENOLOGICAL_STAGES[field.currentStage];
+  
+  // Calculate current stage based on days since sowing
+  const getCurrentStage = (days: number): keyof typeof PHENOLOGICAL_STAGES => {
+    if (days >= 90) return 'MATURATION';
+    if (days >= 70) return 'FLORAISON';
+    if (days >= 35) return 'INITIATION_PANICULE';
+    if (days >= 7) return 'TALLAGE';
+    if (days > 0) return 'LEVEE';
+    return 'SEMIS';
+  };
+  
+  const currentStage = field.currentStage || getCurrentStage(daysSinceSowing);
+  const currentStageInfo = PHENOLOGICAL_STAGES[currentStage] || PHENOLOGICAL_STAGES.LEVEE;
 
   // Opérations pour cette parcelle
   const fieldOperations = operations
@@ -152,7 +188,7 @@ export default function FieldDetailsScreen() {
         </View>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Date de semis</Text>
-          <Text style={styles.infoValue}>{formatDate(field.sowingDate)}</Text>
+          <Text style={styles.infoValue}>{formatDate(plantingDate)}</Text>
         </View>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Type de sol</Text>
@@ -568,5 +604,23 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     marginTop: SPACING.md,
     paddingLeft: 60,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.xl,
+  },
+  errorText: {
+    fontSize: TYPOGRAPHY.fontSize.xxl,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.error,
+    marginBottom: SPACING.md,
+    textAlign: 'center',
+  },
+  errorSubtext: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
   },
 });

@@ -1,17 +1,17 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 
 // Screens
-import DashboardScreen from '@/screens/DashboardScreen';
+import DashboardScreen from '@/screens/DashboardScreenNew';
 import MapScreen from '@/screens/MapScreen';
 import CalendarScreen from '@/screens/CalendarScreen';
 import JournalScreen from '@/screens/JournalScreen';
 import SettingsScreen from '@/screens/SettingsScreen';
 
 // Constants
-import { COLORS, SPACING } from '@/constants/theme';
+import { COLORS, SPACING, SHADOWS } from '@/constants/theme';
 import { useAppSelector } from '@/store/hooks';
 
 const Tab = createBottomTabNavigator();
@@ -45,20 +45,34 @@ export default function MainNavigator() {
               iconName = 'help-outline';
           }
 
-          return <Ionicons name={iconName} size={size} color={color} />;
+          return (
+            <View style={styles.iconContainer}>
+              <Ionicons name={iconName} size={24} color={color} />
+            </View>
+          );
         },
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textSecondary,
         tabBarStyle: {
-          backgroundColor: COLORS.surface,
+          position: 'absolute',
+          backgroundColor: COLORS.white,
           borderTopWidth: 1,
           borderTopColor: COLORS.border,
-          paddingBottom: Platform.OS === 'ios' ? 20 : SPACING.sm,
-          height: Platform.OS === 'ios' ? 85 : 60,
+          paddingTop: 8,
+          paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+          height: Platform.OS === 'ios' ? 88 : 65,
+          ...SHADOWS.medium,
+        },
+        tabBarItemStyle: {
+          paddingVertical: 4,
         },
         tabBarLabelStyle: {
           fontSize: 11,
-          fontWeight: '500',
+          fontWeight: '600',
+          marginTop: 4,
+          marginBottom: 2,
+        },
+        tabBarIconStyle: {
           marginTop: 2,
         },
         headerStyle: {
@@ -71,6 +85,7 @@ export default function MainNavigator() {
           fontWeight: '700',
           fontSize: 18,
         },
+        headerShown: true,
       })}
     >
       <Tab.Screen
@@ -80,6 +95,7 @@ export default function MainNavigator() {
           title: 'Accueil',
           tabBarLabel: 'Accueil',
           tabBarBadge: unreadAlertsCount > 0 ? unreadAlertsCount : undefined,
+          headerShown: false,
         }}
       />
       
@@ -89,7 +105,7 @@ export default function MainNavigator() {
         options={{
           title: 'Carte',
           tabBarLabel: 'Carte',
-          headerShown: false, // Mapbox needs full screen
+          headerShown: false,
         }}
       />
       
@@ -122,3 +138,12 @@ export default function MainNavigator() {
     </Tab.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  iconContainer: {
+    width: 28,
+    height: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});

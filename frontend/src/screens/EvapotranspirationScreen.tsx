@@ -50,7 +50,7 @@ export default function EvapotranspirationScreen() {
   const irrigationEfficiency = 0.75; // 75% d'efficience
   const recommendedIrrigation = (parseFloat(waterRequirement) / irrigationEfficiency).toFixed(1);
 
-  const daysSinceSowing = activeField ? getDaysSinceSowing(activeField.sowingDate) : 0;
+  const daysSinceSowing = activeField?.planting_date ? getDaysSinceSowing(activeField.planting_date) : 0;
 
   const handleRefresh = async () => {
     setRefreshing(true);

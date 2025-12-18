@@ -12,6 +12,7 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -404,7 +405,7 @@ const styles = StyleSheet.create({
   },
   controlsTop: {
     position: 'absolute',
-    top: SPACING.base,
+    top: Platform.OS === 'ios' ? 60 : SPACING.xl,
     left: SPACING.base,
     right: SPACING.base,
     backgroundColor: COLORS.surface,
@@ -424,7 +425,7 @@ const styles = StyleSheet.create({
   },
   controlsMiddle: {
     position: 'absolute',
-    top: 120,
+    top: Platform.OS === 'ios' ? 160 : 130,
     left: SPACING.base,
     right: SPACING.base,
     backgroundColor: COLORS.surface,
@@ -444,7 +445,7 @@ const styles = StyleSheet.create({
   },
   controlsBottom: {
     position: 'absolute',
-    bottom: SPACING.xl,
+    bottom: 100,
     right: SPACING.base,
     gap: SPACING.sm,
   },
@@ -504,7 +505,7 @@ const styles = StyleSheet.create({
   },
   showControlsButton: {
     position: 'absolute',
-    top: SPACING.base,
+    top: Platform.OS === 'ios' ? 60 : SPACING.xl,
     right: SPACING.base,
     width: 50,
     height: 50,
@@ -526,7 +527,7 @@ const styles = StyleSheet.create({
   },
   providerInfo: {
     position: 'absolute',
-    bottom: SPACING.base,
+    bottom: 100,
     left: SPACING.base,
     flexDirection: 'row',
     alignItems: 'center',

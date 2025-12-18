@@ -6,7 +6,7 @@ from typing import List
 
 class Settings(BaseSettings):
     # Database
-    DATABASE_URL: str = "postgresql://user:password@localhost:5432/sigir_db"
+    DATABASE_URL: str = "sqlite:///./rice.db"
     
     # JWT
     SECRET_KEY: str = "your-secret-key-change-this-in-production"

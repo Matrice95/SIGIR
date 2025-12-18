@@ -4,8 +4,9 @@ import { API_BASE_URL } from '@env';
 
 // Instance Axios avec configuration de base
 const api = axios.create({
-  baseURL: API_BASE_URL || 'http://192.168.10.43:8000',
-  timeout: 10000,
+  baseURL: API_BASE_URL || 'http://192.168.1.8:8000',
+  timeout: 60000, // 60 secondes pour les appels satellites
+  maxRedirects: 5, // Suivre les redirections
   headers: {
     'Content-Type': 'application/json',
   },

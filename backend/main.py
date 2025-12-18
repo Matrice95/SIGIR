@@ -5,7 +5,9 @@ Main FastAPI application
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.routes import auth, users, fields, operations, weather, alerts, etp
+from app.api.routes import auth, users, fields, weather, etp
+# TODO: Créer models Operation et Alert avant d'activer ces routes
+# from app.api.routes import operations, alerts
 
 app = FastAPI(
     title="SIGIR API",
@@ -26,9 +28,9 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
 app.include_router(fields.router, prefix="/api/fields", tags=["Fields"])
-app.include_router(operations.router, prefix="/api/operations", tags=["Operations"])
+# app.include_router(operations.router, prefix="/api/operations", tags=["Operations"])  # TODO
 app.include_router(weather.router, prefix="/api/weather", tags=["Weather"])
-app.include_router(alerts.router, prefix="/api/alerts", tags=["Alerts"])
+# app.include_router(alerts.router, prefix="/api/alerts", tags=["Alerts"])  # TODO
 app.include_router(etp.router, prefix="/api/etp", tags=["Evapotranspiration"])
 
 @app.get("/")

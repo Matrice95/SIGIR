@@ -27,6 +27,7 @@ export const COLORS = {
   // UI
   background: '#F5F5F5',
   surface: '#FFFFFF',
+  white: '#FFFFFF',
   text: '#212121',
   textSecondary: '#757575',
   textLight: '#FFFFFF',
@@ -70,6 +71,33 @@ export const TYPOGRAPHY = {
     medium: '500' as const,
     semibold: '600' as const,
     bold: '700' as const,
+  },
+  
+  // Styles texte prédéfinis
+  h1: {
+    fontSize: 32,
+    fontWeight: '700' as const,
+    lineHeight: 40,
+  },
+  h2: {
+    fontSize: 24,
+    fontWeight: '700' as const,
+    lineHeight: 32,
+  },
+  h3: {
+    fontSize: 18,
+    fontWeight: '600' as const,
+    lineHeight: 24,
+  },
+  body: {
+    fontSize: 14,
+    fontWeight: '400' as const,
+    lineHeight: 20,
+  },
+  small: {
+    fontSize: 12,
+    fontWeight: '400' as const,
+    lineHeight: 16,
   },
 };
 
